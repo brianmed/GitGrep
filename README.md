@@ -1,16 +1,17 @@
 # GitGrep
 
-Runs grep against all commits for a given file
+Runs grep against all commits for a given file or for all files.
 
 ## Usage
 
-Run grep against all commits for a specific file (git rev-list --all)
+Run grep against all commits for a specific file (git rev-list --all).
 
 ```bash
 $ GitGrep TODO Integration
 ```
 
-Run grep against all files in all commits
+Run grep against all files in all commits.
+
 ```bash
 $ GitGrep --all Integration -i
 ```
