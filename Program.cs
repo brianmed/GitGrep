@@ -8,18 +8,26 @@ namespace GitGrep
 {
     class Program
     {
-        public static string[] Args { get; set; }
+        // TODO: Mono.Options
+        public static string[] GrepArguments { get; set; }
 
         async static Task Main(string[] args)
         {
-            Args = args;
+            if (args.Length < 2) {
+                Console.WriteLine("Usage: GitGrep file|--all grepArgument1..grepArgumentN");
+            }
+
+            GrepArguments = args.Skip(1).ToArray();
 
             List<string> argumentListGitCommits = new()
             {
                 "rev-list",
                 "--all",
-                Args[0]
             };
+
+            if (args[0] != "--all") {
+                argumentListGitCommits.Add(args[0]);
+            }
 
             ProcessStartInfo startInfoGitCommits = new ProcessStartInfo("git")
             {
@@ -32,12 +40,25 @@ namespace GitGrep
             {
                 startInfoGitCommits.ArgumentList.Add(arg);
             }
+            // Console.WriteLine(String.Join(" ", startInfoGitCommits.ArgumentList));
 
             using (Process processGitCommits = Process.Start(startInfoGitCommits))
             {
-                while (await processGitCommits.StandardOutput.ReadLineAsync() is string line && line != null)
+                while (await processGitCommits.StandardOutput.ReadLineAsync() is string commit && commit != null)
                 {
-                    await ProcessGitCommitLineAsync(line);
+                    List<string> files = new List<string>();
+
+                    // git ls-tree -r --name-only --full-tree 2aeb7d4b140f9b94bf4488d5f7a3e9b596dbedb0
+                    if (args[0] == "--all") {
+                        files.AddRange(await ProcessGitLsFullTreeAsync(commit));
+                    } else {
+                        files.Add(args[0]);
+                    }
+
+                    foreach (string file in files)
+                    {
+                        await ProcessGitShowAsync($"{commit}:{file}");
+                    }
                 }
 
                 await processGitCommits.WaitForExitAsync();
@@ -51,12 +72,52 @@ namespace GitGrep
             }
         }
 
-        public static async Task ProcessGitCommitLineAsync(string line)
+        public static async Task<List<string>> ProcessGitLsFullTreeAsync(string commit)
+        {
+            List<string> argumentListGitLs = new()
+            {
+                "ls-tree",
+                "-r",
+                "--name-only",
+                "--full-tree",
+                commit
+            };
+
+            ProcessStartInfo startInfoGitLs = new ProcessStartInfo("git")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            foreach (string arg in argumentListGitLs)
+            {
+                startInfoGitLs.ArgumentList.Add(arg);
+            }
+
+            // Console.WriteLine(String.Join(" ", argumentListGitLs));
+
+            using (Process processGitLs = Process.Start(startInfoGitLs))
+            {
+                List<string> files = new List<string>();
+
+                while (await processGitLs.StandardOutput.ReadLineAsync() is string file && file != null)
+                {
+                    files.Add(file);
+                }
+
+                await processGitLs.WaitForExitAsync();
+
+                return files;
+            }
+        }
+
+        public static async Task ProcessGitShowAsync(string line)
         {
             List<string> argumentListGitShow = new()
             {
                 "show",
-                $"{line}:{Args[0]}"
+                line
             };
 
             ProcessStartInfo startInfoGitShow = new ProcessStartInfo("git")
@@ -85,9 +146,9 @@ namespace GitGrep
 
                 startInfoGrep.ArgumentList.Add($"--line-buffered");
                 startInfoGrep.ArgumentList.Add($"--with-filename");
-                startInfoGrep.ArgumentList.Add($"--label={line}:{Args[0]}");
+                startInfoGrep.ArgumentList.Add($"--label={line}");
 
-                foreach (string grepArgument in Args.Skip(1))
+                foreach (string grepArgument in GrepArguments)
                 {
                     startInfoGrep.ArgumentList.Add(grepArgument);
                 }
